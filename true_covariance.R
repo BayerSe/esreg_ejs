@@ -12,7 +12,7 @@ dir.create(path, showWarnings = FALSE, recursive = TRUE)
 # Simulation setup
 setup <- expand.grid(
   alpha   = 0.025,
-  n       = 10^5, # 9
+  n       = 10^9,
   design  = c(1, 2, 3, 4),
   g1      = c(1, 2),
   g2      = c(1, 2, 3, 4, 5)
