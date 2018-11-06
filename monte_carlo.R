@@ -60,7 +60,7 @@ for (chunk in 1:length(all_chunks)) {
         cov_iid_ind     = vcov(fit, sparsity = "iid", cond_var = "ind"),
         cov_nid_scl_N   = vcov(fit, sparsity = "nid", cond_var = "scl_N"),
         cov_nid_scl_sp  = vcov(fit, sparsity = "nid", cond_var = "scl_sp"),
-        cov_boot        = vcovB(fit, B = 2, bootstrap_method = "iid")
+        cov_boot        = vcovB(fit, B = 2000, bootstrap_method = "iid")
       )
       
       # Quantile regression for a comparison
