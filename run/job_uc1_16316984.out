@@ -1,0 +1,3 @@
+Loading module dependency 'compiler/intel/17.0'.
+Loading module dependency 'numlib/mkl/2017'.
+[1] "Computing data/monte_carlo/design_3_n_500_g1_2_g2_5/chunk_1.rds"
