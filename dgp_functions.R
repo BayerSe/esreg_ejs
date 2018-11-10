@@ -20,7 +20,7 @@ dgp_fun <- function(design, n, alpha, seed = NULL) {
     df <- function(x, m = 0, s = 1) dnorm(x, mean = m, sd = s)
     pf <- function(q, m = 0, s = 1) pnorm(q, mean = m, sd = s)
     closed_form <- 'norm'
-    gamma <- c(0, 1)
+    gamma <- c(0, -1)
     eta <- c(1, 0)
   } else if (design == 2) {
     x <- cbind(1, rchisq(n, 1))
