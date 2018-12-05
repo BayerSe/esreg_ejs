@@ -1,18 +1,25 @@
+rm(list = ls())
+
 library(esreg)
 library(quantreg)
+library(xts)
 
 df <- read.csv('https://github.com/BayerSe/RealizedQuantities/raw/master/out/realized_quantities_IBM_cts.csv')
 
-r <- df$r_oc[2:nrow(df)]
-rvol <- df$rvol[2:nrow(df)]
-rvol_m <- df$rvol_m[2:nrow(df)]
-rvol_p <- df$rvol_p[2:nrow(df)]
-print(cor(cbind(rvol, rvol_m, rvol_p)))
+subs <- as.Date(df$X) > as.Date('2004-01-01')
+df <- df[subs,]
 
-alpha <- 0.05
+df_ <- cbind(df$rvol_p, df$rvol_m)
+colMeans(df_) * 10^5
+cor(df_)
 
-fit_rq <- rq(r ~ rvol, tau = alpha)
-fit <- esreg(r ~ rvol, alpha = alpha)
+alpha <- 0.10
 
-fit_rq <- rq(r ~ rvol_m + rvol_p, tau = alpha)
-fit <- esreg(r ~ rvol_m + rvol_p, alpha = alpha)
+rq(r_oc ~ rvol, tau = alpha, data = df)
+rq(r_oc ~ rvol_m + rvol_p, tau = alpha, data = df)
+rq(r_oc ~ ivol + jvol, tau = alpha, data = df)
+
+esreg(r_oc ~ rvol, data = df, alpha = alpha)
+esreg(r_oc ~ rvol_m + rvol_p, data = df, alpha = alpha)
+esreg(r_oc ~ ivol + jvol, data = df, alpha = alpha)
+
