@@ -1,11 +1,6 @@
 rm(list = ls())
-
-library(esreg)
-library(quantreg)
-library(xts)
-library(rugarch)
-library(quantmod)
-
+library(pacman)
+p_load(esreg, esback, quantreg, xts, rugarch, quantmod)
 source('empirical_applications/forecast_combination_functions.R')
 
 alpha <- 0.025
@@ -21,35 +16,39 @@ df <- data.frame(
 
 # Forecast Combination ----------------------------------------------------
 
-split <- 2000
+split <- 1000
 df_is <- df[1:split,]
 df_os <- df[(split+1):nrow(df),]
 
 fit <- esreg(r ~ q1 + q2 | e1 + e2, data = df_is, alpha = alpha)
-fit_r <- esreg(r ~ 1, data = df_is, alpha = alpha)
 
-summary(fit, cond_var='scl_sp', sparsity='nid')
-
-bqr <- coef(fit_r)
 bq <- coef(fit)[1:3]
 be <- coef(fit)[4:6]
-
 pq <- cbind(1, as.matrix(df_os)[,2:3]) %*% bq
 pe <- cbind(1, as.matrix(df_os)[,4:5]) %*% be
-pqr <- rep(bqr[1], nrow(df_os))
-per <- rep(bqr[2], nrow(df_os))
 
-p_new <- cbind(df_os, qc=pq, ec=pe, qr=pqr, er=per)
+p_new <- cbind(df_os, qc=pq, ec=pe)
+
+scores <- expand.grid(
+  g1 = c(1, 2),
+  g2 = c(1, 2, 3, 4, 5),
+  l1= NA,
+  l2= NA,
+  lc= NA
+)
+
+for (idx_row in seq_len(nrow(scores))) {
+  g1 <- scores$g1[idx_row]
+  g2 <- scores$g2[idx_row]
+  
+  scores$l1[idx_row] <- esr_loss(r = p_new$r, q = p_new$q1, e = p_new$e1, alpha = alpha, g1 = g1, g2 = g2)
+  scores$l2[idx_row] <- esr_loss(r = p_new$r, q = p_new$q2, e = p_new$e2, alpha = alpha, g1 = g1, g2 = g2)
+  scores$lc[idx_row] <- esr_loss(r = p_new$r, q = p_new$qc, e = p_new$ec, alpha = alpha, g1 = g1, g2 = g2)
+}
 
 l1 <- esr_loss(r = p_new$r, q = p_new$q1, e = p_new$e1, alpha = alpha)
 l2 <- esr_loss(r = p_new$r, q = p_new$q2, e = p_new$e2, alpha = alpha)
 lc <- esr_loss(r = p_new$r, q = p_new$qc, e = p_new$ec, alpha = alpha)
-lr <- esr_loss(r = p_new$r, q = p_new$qr, e = p_new$er, alpha = alpha)
 
-1 - c(l1, l2, lc) / lr
+c(l1, l2, lc)
 
-plot.ts(cbind(p_new$r, p_new$q1, p_new$e1), plot.type = 'single', col=1:3)
-plot.ts(cbind(p_new$r, p_new$q2, p_new$e2), plot.type = 'single', col=1:3)
-plot.ts(cbind(p_new$r, p_new$qc, p_new$ec), plot.type = 'single', col=1:3)
-
-        
