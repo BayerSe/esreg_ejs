@@ -130,7 +130,7 @@ for (idx_row in seq_len(nrow(scores))) {
   scores$l_har[idx_row] <- mean(l_har)
   
   # Compute MCS
-  mcs <- compute_mcs(loss=loss, reps=1000L, bootstrap='stationary', 
+  mcs <- compute_mcs(loss=loss, reps=10000L, bootstrap='stationary', 
                      statistic='R', block_size=10L)
   scores$p_esr[idx_row] <- mcs['ESR', 'Pvalue']
   scores$p_hs[idx_row] <- mcs['HS', 'Pvalue']
@@ -151,7 +151,7 @@ get_table <- function(g1_, conflevel=0.1) {
            ifelse(loss == min(loss), sprintf("%.3f^{**}", loss), sprintf("%.3f^{*}", loss)),
            sprintf("%.3f", loss))} 
   tab <- sapply(1:ncol(l), function(i) col(l[,i], p[,i]))
-  tab <- cbind(c('ESR', 'Hist. Sim.', 'GARCH', 'HAR'), tab)
+  tab <- cbind(c('ESR', 'HS', 'GARCH', 'HAR'), tab)
   g1_fun <- ifelse(g1_==1, '$G_1(z) = z$', '$G_1(z) = 0$')
   tab <- cbind(c(paste0('\\multirow{4}{*}{', g1_fun, '}'), '', '', ''), tab)
   
