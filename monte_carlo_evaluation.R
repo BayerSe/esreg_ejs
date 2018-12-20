@@ -173,16 +173,6 @@ get_frob_norm <- function(all_results) {
   frob_norm
 }
 
-get_relse <- function(all_results) {
-  relse <- do.call('rbind', lapply(all_results, function(x) {
-    data.frame(
-      mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-      melt(x$relse, value.name = 'RELSE', varnames = c('cov_estimator', 'par'))
-    )
-  }))
-  relse
-}
-
 get_estimation_time <- function(all_results) {
   estimation_time <- do.call('rbind', lapply(all_results, function(x) {
     data.frame(
@@ -203,15 +193,11 @@ id <- get_identifier(all_results)
 
 # Extract various tables
 mse <- get_mse(all_results)
-#mse_per_parameter <- get_mse_per_parameter(all_results)
+mse_per_parameter <- get_mse_per_parameter(all_results)
 frob_norm <- get_frob_norm(all_results)
-relse <- get_relse(all_results)
 estimation_time <- get_estimation_time(all_results)
 
 # Make plots
-use_virtualenv('/home/sebastian/.virtualenvs/esreg_theory/') 
-source_python('../esreg_python_functions/main.py')
-
 design <- 3
 n <- 2000
 plot_mse_decomposed(mse_per_parameter, design=design, sample_size=n,
