@@ -1,8 +1,12 @@
 rm(list=ls())
 
 library(pacman)
-p_load(naturalsort, dplyr, reshape2, tidyr, xtable)
+p_load(naturalsort, dplyr, reshape2, tidyr, xtable, reticulate)
+use_virtualenv('/home/sebastian/.virtualenvs/esreg_theory/') 
+source_python('../esreg_python_functions/main.py')
 
+tbl_folder <- '../../Revision EJS/Paper/v1/tables/'
+img_folder <- '../../Revision EJS/Paper/v1/plots/'
 
 # Functions ---------------------------------------------------------------
 
@@ -25,10 +29,6 @@ collect_all_results <- function(sim_path) {
     # Load results
     file_list <- list.files(dir_list[idx], full.names = TRUE)
     file_list <- file_list[file.size(file_list) > 0]
-    
-    #chunk <- as.numeric(sapply(file_list, 
-    #                           function(s) gsub('.rds', '', strsplit(strsplit(s, '/')[[1]][9], '_')[[1]][[2]])))
-    #file_list <- file_list[chunk <= 15]
     
     out <- do.call('c', lapply(file_list, readRDS))
     if (length(out) == 0) next()
@@ -195,10 +195,7 @@ get_estimation_time <- function(all_results) {
 
 # Main part ---------------------------------------------------------------
 
-# Folders with DGP's
 sim_path <- '/mnt/Cluster/Repos/esreg_theory_paper/data/'
-#sim_path <- '/mnt/Cluster/Repos_old/esreg_theory/data/'
-
 all_results <- collect_all_results(sim_path)
 
 # Get identifier
@@ -206,80 +203,27 @@ id <- get_identifier(all_results)
 
 # Extract various tables
 mse <- get_mse(all_results)
-mse_per_parameter <- get_mse_per_parameter(all_results)
+#mse_per_parameter <- get_mse_per_parameter(all_results)
 frob_norm <- get_frob_norm(all_results)
 relse <- get_relse(all_results)
 estimation_time <- get_estimation_time(all_results)
 
-# Write tables to disk
-write.csv(mse, file='../../Plots/Monte_Carlo/input/mse')
-write.csv(mse_per_parameter, file='../../Plots/Monte_Carlo/input/mse_per_parameter')
-write.csv(frob_norm, file='../../Plots/Monte_Carlo/input/norm')
-write.csv(relse, file='../../Plots/Monte_Carlo/input/relse')
-write.csv(estimation_time, file='../../Plots/Monte_Carlo/input/estimation_time')
+# Make plots
+use_virtualenv('/home/sebastian/.virtualenvs/esreg_theory/') 
+source_python('../esreg_python_functions/main.py')
 
+design <- 3
+n <- 2000
+plot_mse_decomposed(mse_per_parameter, design=design, sample_size=n,
+                    file=paste0(img_folder, 'mse_decomposed_design_', design, '_n_', n, '.pdf'))
 
+plot_mse(mse, file=paste0(img_folder, 'mse.pdf'))
 
+for (i in 1:2) {
+  plot_norm(frob_norm, g1=i, file=paste0(img_folder, 'norm_g1_', i, '.pdf'))
+}
 
-
-
-
-
-
-
-
-
-# Comparison of MC and True Covariance ------------------------------------
-
-cov_comp <- do.call('rbind', lapply(all_results, function(x) 
-  data.frame(mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-             cov_true=fnorm(x$cov_true), cov_mc=fnorm(x$cov_mc),
-             stringsAsFactors = FALSE)))
-
-cov_comp %>% filter(n == 5000)
-
-
-mse %>% 
-  select(-mc) %>% 
-  mutate(mse = sprintf("%0.3f", mse)) %>% 
-  spread(g2, mse) %>% 
-  arrange(design, n, g1)
-
-mse_full %>% 
-  select(-c(mc, par_type)) %>% 
-  mutate(mse = sprintf("%0.3f", mse)) %>% 
-  filter(design==1) %>% 
-  spread(par, mse) %>% 
-  arrange(g2, n)
-
-
-mse_per_parameter %>% 
-  select(-c(mc, par)) %>% 
-  filter(design==1) %>% 
-  group_by(n, design, g1, g2, par_type) %>% 
-  summarise(mean_mse=mean(mse)) %>% 
-  ungroup() %>% 
-  mutate(mean_mse = sprintf("%0.3f", mean_mse)) %>% 
-  spread(par_type, mean_mse) %>% 
-  arrange(design, n, g1) %>% 
-  as.data.frame()
-
-
-estimation_time %>% 
-  select(-c(mc)) %>% 
-  mutate(time = sprintf("%0.3f", time)) %>% 
-  spread(g2, time) 
-
-frob_norm %>% 
-  filter(design == 1, g2 == 1, n == 5000) %>% 
-  spread(cov_estimator, norm) %>% 
-  arrange(n)
-
-
-mse_full %>% 
-  filter(design==3, n==2000) %>% 
-  select(-c(mc, par_type, design, n)) %>% 
-  spread(g2, mse) 
+plot_estimation_time(estimation_time, paste0(img_folder, 'estimation_time.pdf'))
 
 
 # Asymptotic covariances ----------------------------------------------------------------------
@@ -302,50 +246,52 @@ replace_g2 <- function(g2) {
          'Quantile Regression'
   )
 }
-for (g1 in c(1, 2)) {
-  nn <- do.call('rbind', lapply(all_results, function(x) {
-    if ((x$n == 250) & (x$g1 == g1)) {
-      k <- nrow(x$cov_true) / 2
-      xx <- data.frame(design=x$design, g1=x$g1, g2=x$g2, type=c(1:3),
-                       norm=c(fnorm(x$cov_true[1:k, 1:k]),
-                              fnorm(x$cov_true[(k+1):(2*k), (k+1):(2*k)]),
-                              fnorm(x$cov_true)),
-                       stringsAsFactors = FALSE)
-      if (x$g2 == 1) {
-        xx <- rbind(xx, data.frame(design=x$design, g1=g1, g2=6, type=1:3,
-                                   norm=c(fnorm(x$cov_true_qr), -1, -1)))
+
+all_norms <- do.call('rbind', lapply(all_results, function(x) {
+  if (x$n == 250) {
+    k <- nrow(x$cov_true) / 2
+    xx <- data.frame(design=x$design, g1=x$g1, g2=x$g2, type=c(1:3),
+                     norm=c(fnorm(x$cov_true[1:k, 1:k]),
+                            fnorm(x$cov_true[(k+1):(2*k), (k+1):(2*k)]),
+                            fnorm(x$cov_true)),
+                     stringsAsFactors = FALSE)
+    if (x$g2 == 1) {
+      xx <- rbind(xx, data.frame(design=x$design, g1=x$g1, g2=6, type=1:3,
+                                 norm=c(fnorm(x$cov_true_qr), -1, -1)))
+    }
+    
+    xx
+  }
+}))
+
+
+for (design_ in list(c(1,2), c(3,4))) {
+  for (g1_ in c(1, 2)) {
+    
+    tab <- all_norms %>% 
+      filter(g1 == g1_, design %in% design_) %>% 
+      spread(g2, norm) %>% 
+      select(-c(type, g1, design)) %>% 
+      t()
+    tab <- cbind(tab[,1:3], NA, tab[,4:6])
+    rownames(tab) <- sapply(1:nrow(tab), function(x) replace_g2(as.numeric(x)))
+    tab <- apply(tab, c(1, 2), function(x) {
+      if (is.na(x)) {
+        ""
+      } else if (x == -1) {
+        "--"
+      } else if (x %% 1 == 0) {
+        sprintf('%.0f', x)
+      } else {
+        sprintf('%.1f', x)
       }
-      
-      xx
-    }
-  }))
-  
-  
-  tab <- lapply(1:4, function(tt) t(nn %>% filter(design == tt) %>% spread(g2, norm) %>% select(-c(type, g1, design))))
-  tab <- cbind(tab[[1]], NA, tab[[2]], NA, tab[[3]], NA, tab[[4]])
-  
-  rownames(tab) <- sapply(rownames(tab), function(x) replace_g2(as.numeric(x)))
-  
-  tab <- apply(tab, c(1, 2), function(x) {
-    if (is.na(x)) {
-      ""
-    } else if (x == -1) {
-      "--"
-    } else if (x %% 1 == 0) {
-      sprintf('%.0f', x)
-    } else {
-      sprintf('%.1f', x)
-    }
-  })
-  
-  xtab <- xtable(tab)
-  print(xtab, #file = paste0('../../Tables/Monte_Carlo/true_variances_design_', dgp),
-        sanitize.text.function = function(x) {x}, booktabs = TRUE,
-        comment = FALSE, only.contents = TRUE, include.colnames = FALSE, hline.after = NULL)
+    })
+    
+    file <- paste0(tbl_folder, 'true_covariance_design_', design_[1], design_[2], '_g1_', g1_, '.txt')
+    xtab <- xtable(tab)
+    print(xtab, file = file,
+          sanitize.text.function = function(x) {x}, booktabs = TRUE,
+          comment = FALSE, only.contents = TRUE, include.colnames = FALSE, hline.after = NULL)
+    
+  }
 }
-
-
-
-
-# New Frob Norm -----------------------------------------------------------
-
