@@ -76,7 +76,7 @@ complete_obs <- df %>%
 # Forecast Combination ----------------------------------------------------
 
 # Separate in-sample and out-of-sample data
-split <- 1500
+split <- 1000
 
 df_is <- df %>% 
   subset(date %in% complete_obs[1:split]) %>% 
@@ -92,7 +92,12 @@ df_os <- df %>%
   select(-contains('_r'))
 
 # Do the actual combination
-fit <- esreg(r ~ RM_q + HS_q | RM_e + HS_e, data = df_is, alpha = alpha)
+model1 <- 'RM'
+model2 <- 'HS'
+
+formula <- Formula::as.Formula(
+  paste0('r ~ ', model1, '_q + ', model2, '_q | ', model1, '_e + ', model2, '_e'))
+fit <- esreg(formula, data = df_is, alpha = alpha)
 pred_comb <- predict(fit, df_os)
 
 # Append the combined forecasts
@@ -103,14 +108,14 @@ df_comb <- data_frame(
   value = c(df_os$r, pred_comb[,1], pred_comb[,2])
 ) %>% arrange(date)
 
-df <- rbind(df, df_comb) %>% arrange(date)
+df_ <- rbind(df, df_comb) %>% arrange(date)
 
 # Update the out-of-sample forecasts
-df_os <- df %>%
+df_os <- df_ %>%
   subset(date %in% complete_obs[-c(1:split)]) %>%
   unite(temp, model, variable) %>%
   spread(temp, value) %>%
-  rename(r = HS_r) %>%
+  rename(r = Comb_r) %>%
   select(-contains('_r'))
 
 
@@ -119,8 +124,8 @@ df_os <- df %>%
 scores <- expand.grid(
   g1 = c(1, 2),
   g2 = c(1, 2, 3, 4, 5),
-  l_rm = NA, p_rm = NA,
-  l_hs = NA, p_hs = NA,
+  l_mod1 = NA, p_mod1 = NA,
+  l_mod2 = NA, p_mod2 = NA,
   l_comb = NA, p_comb = NA
 )
 
@@ -129,26 +134,34 @@ for (idx_row in seq_len(nrow(scores))) {
   g1 <- scores$g1[idx_row]
   g2 <- scores$g2[idx_row]
   
-  l_rm <- esr_loss(r = df_os$r, q = df_os$RM_q, e = df_os$RM_e, 
-                   alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
-  l_hs <- esr_loss(r = df_os$r, q = df_os$HS_q, e = df_os$HS_e, 
-                   alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
-  l_comb <- esr_loss(r = df_os$r, q = df_os$Comb_q, e = df_os$Comb_e, 
+  l_mod1 <- esr_loss(r = df_os$r, 
+                     q = df_os %>% pull(paste0(model1, '_q')), 
+                     e = df_os %>% pull(paste0(model1, '_e')), 
                      alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
-  loss <- data.frame(RiskMetrics=l_rm, Historical_Simulation=l_hs, 
-                     Forecast_Combination=l_comb)
+  
+  l_mod2 <- esr_loss(r = df_os$r, 
+                     q = df_os %>% pull(paste0(model2, '_q')), 
+                     e = df_os %>% pull(paste0(model2, '_e')), 
+                     alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
+  
+  l_comb <- esr_loss(r = df_os$r, 
+                     q = df_os %>% pull('Comb_q'), 
+                     e = df_os %>% pull('Comb_e'), 
+                     alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
+  
+  loss <- data.frame(Model1=l_mod1, Model2=l_mod2, Combination=l_comb)
   
   # Compute scores
-  scores$l_rm[idx_row] <- mean(l_rm)
-  scores$l_hs[idx_row] <- mean(l_hs)
+  scores$l_mod1[idx_row] <- mean(l_mod1)
+  scores$l_mod2[idx_row] <- mean(l_mod2)
   scores$l_comb[idx_row] <- mean(l_comb)
   
   # Compute MCS
-  mcs <- compute_mcs(loss=loss, reps=1000L, bootstrap='stationary', 
+  mcs <- compute_mcs(loss=loss, reps=10000L, bootstrap='stationary', 
                      statistic='R', block_size=10L)
-  scores$p_rm[idx_row] <- mcs['RiskMetrics', 'Pvalue']
-  scores$p_hs[idx_row] <- mcs['Historical_Simulation', 'Pvalue']
-  scores$p_comb[idx_row] <- mcs['Forecast_Combination', 'Pvalue']
+  scores$p_mod1[idx_row] <- mcs['Model1', 'Pvalue']
+  scores$p_mod2[idx_row] <- mcs['Model2', 'Pvalue']
+  scores$p_comb[idx_row] <- mcs['Combination', 'Pvalue']
 }
 
 
@@ -157,23 +170,24 @@ for (idx_row in seq_len(nrow(scores))) {
 
 
 get_table <- function(g1_) {
-  p <- scores %>% filter(g1 == g1_) %>% select(c(p_rm, p_hs, p_comb)) %>% t()
-  l <- scores %>% filter(g1 == g1_) %>% select(c(l_rm, l_hs, l_comb)) %>% t()
+  p <- scores %>% filter(g1 == g1_) %>% select(c(p_mod1, p_mod2, p_comb)) %>% t()
+  l <- scores %>% filter(g1 == g1_) %>% select(c(l_mod1, l_mod2, l_comb)) %>% t()
   
   col <- function(loss, pval, conflevel=0.1){
     ifelse(pval > conflevel, 
            ifelse(loss == min(loss), sprintf("%.3f^{**}", loss), sprintf("%.3f^{*}", loss)),
            sprintf("%.3f", loss))} 
   tab <- sapply(1:ncol(l), function(i) col(l[,i], p[,i]))
-  tab <- cbind(c('RiskMetrics', 'Hist. Sim.', 'Combination'), tab)
+  tab <- cbind(c(model1, model2, 'Comb'), tab)
   g1_fun <- ifelse(g1_==1, '$G_1(z) = z$', '$G_1(z) = 0$')
-  tab <- cbind(c(paste0('\\multirow{3}{*}{', g1_fun, '}'), '', '', ''), tab)
+  tab <- cbind(c(paste0('\\multirow{3}{*}{', g1_fun, '}'), '', ''), tab)
   
   tab
 }
 
 tab <- rbind(get_table(1), get_table(2))
-print(xtable(tab), file = paste0(tbl_folder, 'forecast_combination_scores.txt'),
+print(xtable(tab), 
+      file = paste0(tbl_folder, 'forecast_combination_scores.txt'),
       include.rownames = FALSE, include.colnames = FALSE, 
       sanitize.text.function = function(x) x, booktabs = TRUE,
       comment = FALSE, only.contents = TRUE, hline.after = c(3,6))
@@ -182,8 +196,8 @@ print(xtable(tab), file = paste0(tbl_folder, 'forecast_combination_scores.txt'),
 # Murphy diagram ----------------------------------------------------------
 
 
-out <- df %>% subset(date %in% complete_obs[-c(1:(split+1))])
-models <- unique(out$model)[unique(out$model) != 'Comb']
+out <- df_ %>% subset(date %in% complete_obs[-c(1:(split+1))])
+models <- c(model1, model2)
 
 x <- seq(-10, 0, length.out = 1000)
 loss_diff <- lapply(models, function(est) {
