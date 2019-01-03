@@ -4,6 +4,7 @@ library(esreg)
 library(quantreg)
 library(xts)
 
+
 df <- read.csv('https://github.com/BayerSe/RealizedQuantities/raw/master/out/realized_quantities_IBM_cts.csv')
 
 subs <- as.Date(df$X) > as.Date('2004-01-01')
