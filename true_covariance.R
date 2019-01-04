@@ -41,10 +41,10 @@ for (idx in 1:nrow(setup)) {
   }
   
   # True quantile, shortfall, mean and variance of Y and the error term
-  xq <- as.numeric(df$x %*% df$par_q)
-  xe <- as.numeric(df$x %*% df$par_e)
-  mu_y <- as.numeric(df$x %*% df$gamma)
-  sd_y <- as.numeric(df$x %*% df$eta)
+  xq <- as.numeric(df$xq %*% df$par_q)
+  xe <- as.numeric(df$xe %*% df$par_e)
+  mu_y <- as.numeric(df$z %*% df$gamma)
+  sd_y <- as.numeric(df$z %*% df$eta)
   mu_u <- mu_y - xq
   sd_u <- sd_y
   
@@ -85,13 +85,13 @@ for (idx in 1:nrow(setup)) {
   }
   
   # Compute the covariance
-  cov <- esreg:::l_esreg_covariance(xq = df$x, xe = df$x, xbq = xq, xbe = xe, 
+  cov <- esreg:::l_esreg_covariance(xq = df$xq, xe = df$xq, xbq = xq, xbe = xe, 
                                     G1_prime_xq = G1_prime_xq, G2_xe = G2_xe, 
                                     G2_prime_xe = G2_prime_xe, density = dens, 
                                     conditional_variance = cond_var, 
                                     alpha = st$alpha) * st$n
   
-  cov_qr <- l_qr_covariance(x = df$x, density = dens, alpha = st$alpha) * st$n
+  cov_qr <- l_qr_covariance(x = df$xq, density = dens, alpha = st$alpha) * st$n
   
   # Store as list
   out <- list(design = st$design, g1 = st$g1, g2 = st$g2, 
