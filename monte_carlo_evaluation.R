@@ -1,4 +1,4 @@
-rm(list=ls())
+rm(list = ls())
 
 library(pacman)
 p_load(naturalsort, dplyr, reshape2, tidyr, xtable, reticulate)
@@ -7,19 +7,25 @@ source_python('../esreg_python_functions/main.py')
 
 tbl_folder <- '../../Revision EJS/Paper/v1/tables/'
 img_folder <- '../../Revision EJS/Paper/v1/plots/'
+sim_folder <- '/home/sebastian/Downloads/esreg_theory_data/'
+max_chunk <- 1000
+
 
 # Functions ---------------------------------------------------------------
 
-
-fnorm <- function(mat, subset=NULL) {
-  if (!is.null(subset)) {
-    mat <- mat[subset, subset]  
-  }   
-  sqrt(mean((mat[lower.tri(mat, diag=TRUE)])^2))
+concat_results <- function(all_results, var) {
+  as_data_frame(do.call('rbind', lapply(all_results, function(x) get(var, x))))
 }
 
-collect_all_results <- function(sim_path) {
-  dir_list <- list.files(paste0(sim_path, 'monte_carlo'), full.names = TRUE)
+fnorm <- function(mat, subset = NULL) {
+  if (!is.null(subset)) {
+    mat <- mat[subset, subset]  
+  } 
+  sqrt(sum(mat[lower.tri(mat, diag=TRUE)]^2))
+}
+
+collect_all_results <- function(sim_folder) {
+  dir_list <- list.files(paste0(sim_folder, 'monte_carlo'), full.names = TRUE)
   dir_list <- naturalsort(dir_list)
   
   all_results <- list()
@@ -30,30 +36,27 @@ collect_all_results <- function(sim_path) {
     file_list <- list.files(dir_list[idx], full.names = TRUE)
     file_list <- file_list[file.size(file_list) > 0]
     
+    chunks <- sapply(basename(file_list), function(x) as.numeric(strsplit(strsplit(x, '_')[[1]][2], '.', fixed = TRUE)[[1]][1]))
+    file_list <- file_list[chunks <= max_chunk]
+    n_files <- length(file_list)
+    
     out <- do.call('c', lapply(file_list, readRDS))
     if (length(out) == 0) next()
     
     # Remove observations with errors
-    check <- sapply(out, is.null)
-    out <- out[!check]
-    
     check <- sapply(out, function(x) inherits(x, 'error'))
     out <- out[!check]
     
     check <- sapply(out, anyNA, recursive=TRUE)
     out <- out[!check]
     
-    check <- sapply(out, function(x) any(sapply(x, function(x) 
-      ifelse(is.numeric(x), any(x > 1e5), FALSE))))
-    out <- out[!check]
-    
-    check <- sapply(out, function(z) any(sapply(z, function(x) any(is.na(x)))))
+    check <- apply(abs(do.call(rbind, lapply(out, '[[', 'par_fit'))) >= 100, 1, any)
     out <- out[!check]
     
     mc <- length(out)
     if (mc == 0) next()
     
-    # Extract simualtion details
+    # Extract simulation settings
     n <- out[[1]]$n
     alpha <- out[[1]]$alpha
     design <- out[[1]]$design
@@ -63,70 +66,65 @@ collect_all_results <- function(sim_path) {
     # Estimated parameters
     all_par <- do.call(rbind, lapply(out, '[[', 'par_fit'))
     all_par_qr <- do.call(rbind, lapply(out, '[[', 'par_fit_qr'))
+    par_avg <- colMeans(all_par)
     
     # Monte-Carlo covariance
     cov_mc <- cov(all_par) * n
     cov_mc_qr <- cov(all_par_qr) * n
+    #cov_mc <- robustbase::covMcd(all_par, nsamp = 'deterministic')$cov * n
+    #cov_mc_qr <- robustbase::covMcd(all_par_qr, nsamp = 'deterministic')$cov * n
     
-    # Covariance estimators
-    cov_est_names <- c('cov_iid_ind', 'cov_nid_scl_N', 'cov_nid_scl_sp', 'cov_boot')
+    # Mean squared error per parameter
+    mse <- tibble(design=design, n=n, g1=g1, g2=g2,
+                  par=seq_len(nrow(cov_mc)),
+                  par_type=rep(c('Q', 'ES'), each=nrow(cov_mc) / 2),
+                  value=(out[[1]]$par_true - par_avg)^2 + diag(cov_mc) / n)
     
     # Average Frobenius Norm
+    cov_est_names <- c('cov_iid_ind', 'cov_nid_scl_N', 'cov_nid_scl_sp', 'cov_boot')
     avg_fnorm <- sapply(cov_est_names, function(x) 
       mean(sapply(lapply(out, "[[", x), function(z) fnorm(z * n - cov_mc))))
+    avg_fnorm <- tibble(design=design, n=n, g1=g1, g2=g2, 
+                        cov=cov_est_names, value=avg_fnorm)
     
-    # Average of the estimated covariances
+    # True covariance
+    true_cov_file <- paste0(sim_folder, 'true_covariance/design_', design, 
+                            '_g1_', g1, '_g2_', g2, '.rds')
+    df <- readRDS(true_cov_file)
+    cov_true <- df$cov
+    cov_true_qr <- df$cov_qr
+    
+    # Norm of true covariance
+    k <- nrow(cov_true) / 2
+    fnorm_true_cov <- tibble(design=design, n=n, g1=g1, g2=g2, 
+                             type=c('Q', 'ES', 'Full'),
+                             value=c(fnorm(cov_true[1:k, 1:k]),
+                                     fnorm(cov_true[(k+1):(2*k), (k+1):(2*k)]),
+                                     fnorm(cov_true)))
+    fnorm_true_cov <- rbind(fnorm_true_cov, 
+                            tibble(design=design, n=n, g1=g1, g2=6,
+                                   type=c('Q', 'ES', 'Full'), 
+                                   value=c(fnorm(cov_true_qr), NA, NA)))
+    
+    
+    # # Average of the estimated covariances
     cov_est <- lapply(cov_est_names, function(x) 
       Reduce('+', lapply(out, '[[', x)) / length(out) * n)
     names(cov_est) <- cov_est_names
     
-    cov_est_qr_names <- c('cov_qr_iid', 'cov_qr_nid')
-    cov_est_qr <- lapply(cov_est_qr_names, 
-                         function(x) Reduce('+', lapply(out, '[[', x)) / length(out) * n)
-    names(cov_est_qr) <- cov_est_qr_names
-    
-    # Relative standard errors
-    relse <- t(sapply(cov_est, function(cov) diag(cov_mc)^0.5 / diag(cov)^0.5))
-    relse_qr <- t(sapply(cov_est_qr, function(cov) diag(cov_mc_qr)^0.5 / diag(cov)^0.5))
-    
-    # Times
-    t_fit_mean <- mean(sapply(out, '[[', 't_fit'))
-    t_fit_var <- var(sapply(out, '[[', 't_fit'))
-    
-    # True covariance
-    true_cov_file <- paste0(sim_path, 'true_covariance/design_', design, '_g1_', g1, '_g2_', g2, '.rds')
-    if (file.exists(true_cov_file) & (file.size(true_cov_file) > 0)) {
-      df <- readRDS(true_cov_file)
-      cov_true <- df$cov
-      cov_true_qr <- df$cov_qr
-    } else {
-      cov_true <- matrix(NA, nrow(cov_est[[1]]), ncol(cov_est[[1]]))  
-      cov_true_qr <- matrix(NA, nrow(cov_est_qr[[1]]), ncol(cov_est_qr[[1]]))  
-    }
-    
+    # General information
+    avg_time <- mean(sapply(out, '[[', 't_fit'))
+    general_info <- tibble(design=design, n=n, g1=g1, g2=g2,
+                           mc0=n_files * 100, mc=mc, 
+                           rel_diff_mc = mc / (n_files * 100), 
+                           time=avg_time)
     # Stack everything
-    results <- c(list(
-      mc          = mc,
-      n           = n,
-      alpha       = alpha,
-      design      = design,
-      g1          = g1,
-      g2          = g2,
-      t_fit_mean  = t_fit_mean,
-      t_fit_var   = t_fit_var,
-      removed     = 1 - length(out) / mc,
-      par_true    = out[[1]]$par_true,
-      par_true_qr = out[[1]]$par_true[1:length(out[[1]]$par_fit_qr)],
-      par_avg     = colMeans(all_par),
-      par_avg_qr  = colMeans(all_par_qr),
-      cov_true    = cov_true,
-      cov_true_qr = cov_true_qr,
-      cov_mc      = cov_mc,
-      cov_mc_qr   = cov_mc_qr,
-      relse       = relse,
-      all_par     = all_par,
-      avg_fnorm   = avg_fnorm
-    ), cov_est, cov_est_qr)
+    results <- list(
+      general_info   = general_info,
+      mse            = mse,
+      avg_fnorm      = avg_fnorm,
+      fnorm_true_cov = fnorm_true_cov
+    )
     
     # Add to the big list
     all_results <- c(all_results, list(results))
@@ -135,69 +133,26 @@ collect_all_results <- function(sim_path) {
   all_results
 }
 
-get_identifier <- function(all_results) {
-  id <- do.call('rbind', lapply(all_results, function(x)
-    data.frame(mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-               stringsAsFactors = FALSE)))
-  id
-}
-
-get_mse <- function(all_results) {
-  mse <- do.call('rbind', lapply(all_results, function(x) 
-    data.frame(mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-               mse=sum(t((x$par_true - x$par_avg)^2 + diag(x$cov_mc) / x$n)),
-               stringsAsFactors = FALSE)))
-  mse
-}
-
-get_mse_per_parameter <- function(all_results) {
-  mse_per_parameter <- do.call('rbind', lapply(all_results, function(x) 
-    data.frame(mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-               par=seq_len(nrow(x$cov_mc)),
-               par_type=rep(c('Q', 'ES'), each=nrow(x$cov_mc) / 2),
-               mse=(x$par_true - x$par_avg)^2 + diag(x$cov_mc) / x$n,
-               stringsAsFactors = FALSE)))
-  mse_per_parameter
-}
-
-get_frob_norm <- function(all_results) {
-  frob_norm <- do.call('rbind', lapply(all_results, function(x) 
-    data.frame(mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-               cov_estimator=names(x$avg_fnorm), norm=x$avg_fnorm,
-               stringsAsFactors = FALSE)))
-  
-  frob_norm <- frob_norm %>% 
-    group_by(design, g1, g2) %>%
-    as.data.frame()
-  
-  frob_norm
-}
-
-get_estimation_time <- function(all_results) {
-  estimation_time <- do.call('rbind', lapply(all_results, function(x) {
-    data.frame(
-      mc=x$mc, n=x$n, design=x$design, g1=x$g1, g2=x$g2,
-      time=x$t_fit_mean
-    )
-  }))
-  estimation_time
-}
 
 # Main part ---------------------------------------------------------------
 
-sim_path <- '/mnt/Cluster/Repos/esreg_theory_paper/data/'
-all_results <- collect_all_results(sim_path)
+all_results <- collect_all_results(sim_folder)
 
-# Get identifier
-id <- get_identifier(all_results)
 
-# Extract various tables
-mse <- get_mse(all_results)
-mse_per_parameter <- get_mse_per_parameter(all_results)
-frob_norm <- get_frob_norm(all_results)
-estimation_time <- get_estimation_time(all_results)
+# Extract results ---------------------------------------------------------
 
-# Make plots
+general_info <- concat_results(all_results, 'general_info')
+mse_per_parameter <- concat_results(all_results, 'mse')
+mse <- mse_per_parameter %>% 
+  group_by(design, n, g1, g2) %>% 
+  summarise(value = sum(value)) %>% 
+  ungroup()
+frob_norm <- concat_results(all_results, 'avg_fnorm')
+frob_norm_true_cov <- concat_results(all_results, 'fnorm_true_cov')
+
+
+# Make plots --------------------------------------------------------------
+
 design <- 3
 n <- 2000
 plot_mse_decomposed(mse_per_parameter, design=design, sample_size=n,
@@ -209,18 +164,10 @@ for (i in 1:2) {
   plot_norm(frob_norm, g1=i, file=paste0(img_folder, 'norm_g1_', i, '.pdf'))
 }
 
-plot_estimation_time(estimation_time, paste0(img_folder, 'estimation_time.pdf'))
+plot_estimation_time(general_info, paste0(img_folder, 'estimation_time.pdf'))
 
 
 # Asymptotic covariances ----------------------------------------------------------------------
-
-replace_g1 <- function(g1) {
-  switch(g1,
-         '$G_1(z) = z$',
-         '$G_1(z) = 0$',
-         'Quantile Regression'
-  )
-}
 
 replace_g2 <- function(g2) {
   switch(g2,
@@ -233,47 +180,23 @@ replace_g2 <- function(g2) {
   )
 }
 
-all_norms <- do.call('rbind', lapply(all_results, function(x) {
-  if (x$n == 250) {
-    k <- nrow(x$cov_true) / 2
-    xx <- data.frame(design=x$design, g1=x$g1, g2=x$g2, type=c(1:3),
-                     norm=c(fnorm(x$cov_true[1:k, 1:k]),
-                            fnorm(x$cov_true[(k+1):(2*k), (k+1):(2*k)]),
-                            fnorm(x$cov_true)),
-                     stringsAsFactors = FALSE)
-    if (x$g2 == 1) {
-      xx <- rbind(xx, data.frame(design=x$design, g1=x$g1, g2=6, type=1:3,
-                                 norm=c(fnorm(x$cov_true_qr), -1, -1)))
-    }
-    
-    xx
-  }
-}))
-
-
-for (design_ in list(c(1,2), c(3,4))) {
+for (design_ in list(c(1, 2), c(3, 4))) {
   for (g1_ in c(1, 2)) {
-    
-    tab <- all_norms %>% 
-      filter(g1 == g1_, design %in% design_) %>% 
-      spread(g2, norm) %>% 
-      select(-c(type, g1, design)) %>% 
-      t()
-    tab <- cbind(tab[,1:3], NA, tab[,4:6])
+    tabs <- lapply(design_, function(d_) {
+      frob_norm_true_cov %>% 
+        subset(design == d_ & n == 250 & g1 == g1_) %>% 
+        distinct(g2, type, .keep_all=TRUE) %>% 
+        spread(type, value)
+    })
+    tab <- cbind(tabs[[1]][,c('Q', 'ES', 'Full')], -1, tabs[[2]][,c('Q', 'ES', 'Full')])
     rownames(tab) <- sapply(1:nrow(tab), function(x) replace_g2(as.numeric(x)))
+    
     tab <- apply(tab, c(1, 2), function(x) {
-      if (is.na(x)) {
-        ""
-      } else if (x == -1) {
-        "--"
-      } else if (x %% 1 == 0) {
-        sprintf('%.0f', x)
-      } else {
-        sprintf('%.1f', x)
-      }
+      if (is.na(x)) {'--'} else if (x == -1) {''} else {sprintf('%.1f', x)}
     })
     
-    file <- paste0(tbl_folder, 'true_covariance_design_', design_[1], design_[2], '_g1_', g1_, '.txt')
+    file <- paste0(tbl_folder, 'true_covariance_design_', 
+                   design_[1], design_[2], '_g1_', g1_, '.txt')
     xtab <- xtable(tab)
     print(xtab, file = file,
           sanitize.text.function = function(x) {x}, booktabs = TRUE,
@@ -281,3 +204,4 @@ for (design_ in list(c(1,2), c(3,4))) {
     
   }
 }
+
