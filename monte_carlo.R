@@ -31,9 +31,10 @@ setup <- expand.grid(
 setup <- setup[sample(nrow(setup)),]
 
 # Number of Monte-Carlo repetitions and the chunks
-mc <- 25000
+mc <- 1:6000
+#mc <- 6001:12000
 save_frequency <- 100
-all_chunks <- split(1:mc, ceiling(seq_along(1:mc) / save_frequency))
+all_chunks <- split(mc, ceiling(seq_along(mc) / save_frequency))
 
 # Run the simulation: loop over all chunks and settings
 for (chunk in 1:length(all_chunks)) {
@@ -55,7 +56,7 @@ for (chunk in 1:length(all_chunks)) {
       df <- dgp_fun(design = st$design, n = st$n, alpha = st$alpha, seed = seed)
       
       # Fit model and estimate the covariances
-      fit <- esreg(df$y ~ df$x - 1, alpha = st$alpha, g1 = st$g1, g2 = st$g2)
+      fit <- esreg(df$y ~ df$xq - 1 | df$xe - 1, alpha = st$alpha, g1 = st$g1, g2 = st$g2)
       all_cov <- list(
         cov_iid_ind     = vcovA(fit, sparsity = "iid", cond_var = "ind"),
         cov_nid_scl_N   = vcovA(fit, sparsity = "nid", cond_var = "scl_N"),
@@ -63,8 +64,8 @@ for (chunk in 1:length(all_chunks)) {
         cov_boot        = vcovB(fit, B = 2000, bootstrap_method = "iid")
       )
       
-      # Quantile regression for a comparison
-      fit_qr <- rq(df$y ~ df$x - 1, tau = st$alpha)
+      # Quantile regression for comparison
+      fit_qr <- rq(df$y ~ df$xq - 1, tau = st$alpha)
       all_cov_qr <- list(
         cov_qr_iid = summary.rq(fit_qr, covariance = TRUE, hs = TRUE, se = "iid")$cov,
         cov_qr_nid = summary.rq(fit_qr, covariance = TRUE, hs = TRUE, se = "nid")$cov
