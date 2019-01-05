@@ -31,8 +31,7 @@ setup <- expand.grid(
 setup <- setup[sample(nrow(setup)),]
 
 # Number of Monte-Carlo repetitions and the chunks
-mc <- 1:6000
-#mc <- 6001:12000
+mc <- 1:25000
 save_frequency <- 100
 all_chunks <- split(mc, ceiling(seq_along(mc) / save_frequency))
 
