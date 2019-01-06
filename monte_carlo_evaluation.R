@@ -14,7 +14,7 @@ max_chunk <- 1000
 # Functions ---------------------------------------------------------------
 
 concat_results <- function(all_results, var) {
-  as_data_frame(do.call('rbind', lapply(all_results, function(x) get(var, x))))
+  as_tibble(do.call('rbind', lapply(all_results, function(x) get(var, x))))
 }
 
 fnorm <- function(mat, subset = NULL) {
@@ -71,8 +71,6 @@ collect_all_results <- function(sim_folder) {
     # Monte-Carlo covariance
     cov_mc <- cov(all_par) * n
     cov_mc_qr <- cov(all_par_qr) * n
-    #cov_mc <- robustbase::covMcd(all_par, nsamp = 'deterministic')$cov * n
-    #cov_mc_qr <- robustbase::covMcd(all_par_qr, nsamp = 'deterministic')$cov * n
     
     # Mean squared error per parameter
     mse <- tibble(design=design, n=n, g1=g1, g2=g2,
@@ -87,27 +85,36 @@ collect_all_results <- function(sim_folder) {
     avg_fnorm <- tibble(design=design, n=n, g1=g1, g2=g2, 
                         cov=cov_est_names, value=avg_fnorm)
     
+    relse <- do.call('rbind', lapply(cov_est_names, function(x) {
+      tibble(design=design, n=n, g1=g1, g2=g2,
+             par=seq_len(nrow(cov_mc)),
+             par_type=rep(c('Q', 'ES'), each=nrow(cov_mc) / 2),
+             cov=x,
+             value=sqrt(diag(Reduce('+', lapply(out, '[[', x)) / 
+                               length(out) * n)) / sqrt(diag(cov_mc)))
+    }))
+    
+    
     # True covariance
-    true_cov_file <- paste0(sim_folder, 'true_covariance/design_', design, 
-                            '_g1_', g1, '_g2_', g2, '.rds')
+    true_cov_file <- paste0(sim_folder, 'true_covariance/design_', design,
+                           '_g1_', g1, '_g2_', g2, '.rds')
     df <- readRDS(true_cov_file)
     cov_true <- df$cov
     cov_true_qr <- df$cov_qr
     
     # Norm of true covariance
     k <- nrow(cov_true) / 2
-    fnorm_true_cov <- tibble(design=design, n=n, g1=g1, g2=g2, 
+    fnorm_true_cov <- tibble(design=design, n=n, g1=g1, g2=g2,
                              type=c('Q', 'ES', 'Full'),
                              value=c(fnorm(cov_true[1:k, 1:k]),
                                      fnorm(cov_true[(k+1):(2*k), (k+1):(2*k)]),
                                      fnorm(cov_true)))
-    fnorm_true_cov <- rbind(fnorm_true_cov, 
+    fnorm_true_cov <- rbind(fnorm_true_cov,
                             tibble(design=design, n=n, g1=g1, g2=6,
-                                   type=c('Q', 'ES', 'Full'), 
+                                   type=c('Q', 'ES', 'Full'),
                                    value=c(fnorm(cov_true_qr), NA, NA)))
     
-    
-    # # Average of the estimated covariances
+    # Average of the estimated covariances
     cov_est <- lapply(cov_est_names, function(x) 
       Reduce('+', lapply(out, '[[', x)) / length(out) * n)
     names(cov_est) <- cov_est_names
@@ -123,7 +130,8 @@ collect_all_results <- function(sim_folder) {
       general_info   = general_info,
       mse            = mse,
       avg_fnorm      = avg_fnorm,
-      fnorm_true_cov = fnorm_true_cov
+      fnorm_true_cov = fnorm_true_cov,
+      relse          = relse
     )
     
     # Add to the big list
@@ -148,10 +156,13 @@ mse <- mse_per_parameter %>%
   summarise(value = sum(value)) %>% 
   ungroup()
 frob_norm <- concat_results(all_results, 'avg_fnorm')
+relse <- concat_results(all_results, 'relse')
 frob_norm_true_cov <- concat_results(all_results, 'fnorm_true_cov')
 
 
 # Make plots --------------------------------------------------------------
+
+general_info %>% subset(rel_diff_mc < 0.999) %>% arrange(rel_diff_mc)
 
 design <- 3
 n <- 2000
@@ -165,6 +176,15 @@ for (i in 1:2) {
 }
 
 plot_estimation_time(general_info, paste0(img_folder, 'estimation_time.pdf'))
+
+g1 <- 2
+g2 <- 1
+for (n in c(250, 500, 1000, 2000, 5000)) {
+  file <- paste0(img_folder, 'relse_g1_', g1, '_g2_', g2, '_n_', n, '.pdf')
+  plot_relse(relse, g1=g1, g2=g2, sample_size=n, file=file)
+}
+file <- paste0(img_folder, 'relse_g1_', g1, '_g2_', g2, '.pdf')
+plot_relse_all(relse, g1=g1, g2=g2, file=file)
 
 
 # Asymptotic covariances ----------------------------------------------------------------------
