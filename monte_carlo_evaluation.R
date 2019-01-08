@@ -8,7 +8,7 @@ source_python('../esreg_python_functions/main.py')
 tbl_folder <- '../../Revision EJS/Paper/v1/tables/'
 img_folder <- '../../Revision EJS/Paper/v1/plots/'
 sim_folder <- '/home/sebastian/Downloads/esreg_theory_data/'
-max_chunk <- 1000
+max_chunk <- 100
 
 
 # Functions ---------------------------------------------------------------
@@ -162,7 +162,7 @@ frob_norm_true_cov <- concat_results(all_results, 'fnorm_true_cov')
 
 # Make plots --------------------------------------------------------------
 
-general_info %>% subset(rel_diff_mc < 0.999) %>% arrange(rel_diff_mc)
+general_info %>% subset(rel_diff_mc < 1) %>% arrange(rel_diff_mc) %>% print(n=40)
 
 design <- 3
 n <- 2000
