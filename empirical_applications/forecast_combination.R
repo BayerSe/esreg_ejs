@@ -10,7 +10,7 @@ img_folder <- '../../Revision EJS/Paper/v1/plots/'
 
 # Functions ---------------------------------------------------------------
 
-load_returns <- function(symbol='^GSPC', from='2000-01-01', to='2018-11-30') {
+load_returns <- function(symbol='^GSPC', from='2000-01-01', to='2018-12-31') {
   p <- getSymbols(symbol, auto.assign = FALSE, from = from, to = to)
   p <- p[,6]
   r <- xts::diff.xts(p, log=TRUE, na.pad=FALSE) * 100
