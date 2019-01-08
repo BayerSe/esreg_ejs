@@ -138,13 +138,12 @@ for (idx_row in seq_len(nrow(scores))) {
   scores$p_har[idx_row] <- mcs['HAR', 'Pvalue']
 }
 
-
 # Table -------------------------------------------------------------------
 
 
 get_table <- function(g1_, conflevel=0.1) {
-  p <- scores %>% filter(g1 == g1_) %>% select(c(p_esr, p_hs, p_garch, p_har)) %>% t()
-  l <- scores %>% filter(g1 == g1_) %>% select(c(l_esr, l_hs, l_garch, l_har)) %>% t()
+  p <- scores %>% subset(g1 == g1_) %>% select(c(p_esr, p_hs, p_garch, p_har)) %>% t()
+  l <- scores %>% subset(g1 == g1_) %>% select(c(l_esr, l_hs, l_garch, l_har)) %>% t()
   
   col <- function(loss, pval, conflevel=0.1){
     ifelse(pval > conflevel, 
@@ -172,8 +171,8 @@ x <- seq(-10, 0, length.out = 1000)
 models <- unique(out$model)[unique(out$model) != 'esr']
 
 loss_diff <- lapply(models, function(est) {
-  df1 <- out %>% filter(model == est) %>% spread(variable, value)
-  df0 <- out %>% filter(model == 'esr') %>% spread(variable, value)
+  df1 <- out %>% subset(model == est) %>% spread(variable, value)
+  df0 <- out %>% subset(model == 'esr') %>% spread(variable, value)
   
    t(sapply(x, function(v) murpy_diff(r=df0$r, q1=df0$q, e1=df0$e, 
                                       q2=df1$q, e2=df1$e, alpha=alpha, v=v)))
