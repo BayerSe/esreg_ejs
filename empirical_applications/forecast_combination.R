@@ -10,13 +10,6 @@ img_folder <- '../../Revision EJS/Paper/v1/plots/'
 
 # Functions ---------------------------------------------------------------
 
-load_returns <- function(symbol='^GSPC', from='2000-01-01', to='2018-12-31') {
-  p <- getSymbols(symbol, auto.assign = FALSE, from = from, to = to)
-  p <- p[,6]
-  r <- xts::diff.xts(p, log=TRUE, na.pad=FALSE) * 100
-  unname(r)
-}
-
 mod_hs <- function(r, alpha, win = 250) {
   q <- e <- s <- rep(NA, length(r))
   for (t in (win+1):length(r)) {
@@ -25,7 +18,7 @@ mod_hs <- function(r, alpha, win = 250) {
     e[t] <- mean(r_tmp[r_tmp <= q[t]])
   }
   
-  df <- data_frame(
+  df <- tibble(
     date = rep(index(r), 3),
     model = 'HS',
     variable = rep(c('r', 'q', 'e'), each=length(r)),
@@ -46,7 +39,7 @@ mod_rm <- function(r, alpha, win=250) {
   q <- qnorm(alpha) * s
   e <- -dnorm(qnorm(alpha)) / alpha * s
   
-  df <- data_frame(
+  df <- tibble(
     date = rep(index(r), 3),
     model = 'RM',
     variable = rep(c('r', 'q', 'e'), each=length(r)),
@@ -59,7 +52,12 @@ mod_rm <- function(r, alpha, win=250) {
 # Main part ---------------------------------------------------------------
 
 alpha <- 0.025
-r <- load_returns()
+file <- 'empirical_applications/data/oxfordmanrealizedvolatilityindices.zip'
+#symbol <- '.SPX'
+symbol <- commandArgs(trailingOnly=TRUE)[1]
+sym <- gsub('.', '', symbol, fixed = TRUE)
+data <- load_data(file, symbol)
+r <- data$y
 df_rm <- mod_rm(r, alpha)
 df_hs <- mod_hs(r, alpha)
 df <- rbind(df_rm, df_hs)
@@ -101,7 +99,7 @@ fit <- esreg(formula, data = df_is, alpha = alpha)
 pred_comb <- predict(fit, df_os)
 
 # Append the combined forecasts
-df_comb <- data_frame(
+df_comb <- tibble(
   date = rep(df_os$date, 3),
   model = 'Comb',
   variable = rep(c('r', 'q', 'e'), each=length(df_os$date)),
@@ -130,7 +128,6 @@ scores <- expand.grid(
 )
 
 for (idx_row in seq_len(nrow(scores))) {
-  print(idx_row / nrow(scores))
   g1 <- scores$g1[idx_row]
   g2 <- scores$g2[idx_row]
   
@@ -168,10 +165,9 @@ for (idx_row in seq_len(nrow(scores))) {
 
 # Table -------------------------------------------------------------------
 
-
 get_table <- function(g1_) {
-  p <- scores %>% filter(g1 == g1_) %>% select(c(p_mod1, p_mod2, p_comb)) %>% t()
-  l <- scores %>% filter(g1 == g1_) %>% select(c(l_mod1, l_mod2, l_comb)) %>% t()
+  p <- scores %>% dplyr::filter(g1 == g1_) %>% select(c(p_mod1, p_mod2, p_comb)) %>% t()
+  l <- scores %>% dplyr::filter(g1 == g1_) %>% select(c(l_mod1, l_mod2, l_comb)) %>% t()
   
   col <- function(loss, pval, conflevel=0.1){
     ifelse(pval > conflevel, 
@@ -187,7 +183,7 @@ get_table <- function(g1_) {
 
 tab <- rbind(get_table(1), get_table(2))
 print(xtable(tab), 
-      file = paste0(tbl_folder, 'forecast_combination_scores.txt'),
+      file = paste0(tbl_folder, 'forecast_combination_scores_', sym, '.txt'),
       include.rownames = FALSE, include.colnames = FALSE, 
       sanitize.text.function = function(x) x, booktabs = TRUE,
       comment = FALSE, only.contents = TRUE, hline.after = c(3,6))
@@ -195,14 +191,13 @@ print(xtable(tab),
 
 # Murphy diagram ----------------------------------------------------------
 
-
-out <- df_ %>% subset(date %in% complete_obs[-c(1:(split+1))])
+out <- df_ %>% dplyr::filter(date %in% complete_obs[-c(1:(split+1))])
 models <- c(model1, model2)
 
 x <- seq(-10, 0, length.out = 1000)
 loss_diff <- lapply(models, function(est) {
-  df1 <- out %>% filter(model == est) %>% spread(variable, value)
-  df0 <- out %>% filter(model == 'Comb') %>% spread(variable, value)
+  df1 <- out %>% dplyr::filter(model == est) %>% spread(variable, value)
+  df0 <- out %>% dplyr::filter(model == 'Comb') %>% spread(variable, value)
   
   t(sapply(x, function(v) murpy_diff(r=df0$r, q1=df0$q, e1=df0$e, 
                                      q2=df1$q, e2=df1$e, alpha=alpha, v=v)))
@@ -215,4 +210,5 @@ mean_loss_diff$x <- x
 sd_loss_diff$x <- x
 
 plot_murphy_diagram(loss_mean=mean_loss_diff, loss_sd=sd_loss_diff, cl=0.9, 
-                    file=paste0(img_folder, 'forecast_combination_murphy.pdf'))
+                    file=paste0(img_folder, 'forecast_combination_murphy_', 
+                                sym, '.pdf'))

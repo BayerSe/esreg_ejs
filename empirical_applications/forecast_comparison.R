@@ -11,8 +11,9 @@ img_folder <- '../../Revision EJS/Paper/v1/plots/'
 
 # Functions ---------------------------------------------------------------
 
-do_predictions <- function(y, x, alpha, win = 1000) {
-  file <- 'empirical_applications/data/forecast_comparison.rds'
+do_predictions <- function(y, x, alpha, symbol, win = 1000) {
+  file <- paste0('empirical_applications/data/forecast_comparison_', 
+                 gsub('.', '', symbol, fixed=TRUE), '.rds')
   if (file.exists(file)) {
     out <- readRDS(file)
   } else {
@@ -57,7 +58,7 @@ do_predictions <- function(y, x, alpha, win = 1000) {
       e_hs <- mean(tail(y_, 250)[tail(y_, 250) <= q_hs])
       
       # Return
-      data_frame(
+      tibble(
         date = rep(d_, 4*3),
         model = rep(c("esr", "garch", "har", "hs"), each=3),
         variable = rep(c('r', 'q', 'e'), 4),
@@ -67,6 +68,7 @@ do_predictions <- function(y, x, alpha, win = 1000) {
                   yf, q_hs, e_hs)
       )
     }
+    
     out <- out[!sapply(out, function(x) inherits(x, "simpleError"))]
     out <- do.call('rbind', out)
     saveRDS(out, file)
@@ -76,19 +78,13 @@ do_predictions <- function(y, x, alpha, win = 1000) {
 
 # Load data ---------------------------------------------------------------
 
-df <- read.csv("empirical_applications/data/realized_quantities/IBM")
-date <- as.Date(as.character(df$X))
-
-y <- xts(df$r_cc, order.by = date) * 100
-x <- xts(df$rvol, order.by = date) * 100
-
-idx <- is.na(y) | is.na(x)
-y <- y[!idx]
-x <- x[!idx]
-
+file <- '~/Downloads/oxfordmanrealizedvolatilityindices.zip'
+#symbol <- '.SPX'
+symbol <- commandArgs(trailingOnly=TRUE)[1]
+data <- load_data(file, symbol)
 alpha <- 0.025
-
-out <- do_predictions(y = y, x = x, alpha = alpha, win = 1000)
+out <- do_predictions(y = data$y, x = data$x, 
+                      symbol = symbol, alpha = alpha, win = 1000)
 
 
 # Evaluation --------------------------------------------------------------
@@ -114,13 +110,13 @@ for (idx_row in seq_len(nrow(scores))) {
   g2 <- scores$g2[idx_row]
   
   l_esr <- esr_loss(r = df_os$r, q = df_os$esr_q, e = df_os$esr_e, 
-                   alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
+                    alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
   l_hs <- esr_loss(r = df_os$r, q = df_os$hs_q, e = df_os$hs_e, 
                    alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
   l_har <- esr_loss(r = df_os$r, q = df_os$har_q, e = df_os$har_e, 
-                     alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
+                    alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)
   l_garch <- esr_loss(r = df_os$r, q = df_os$garch_q, e = df_os$garch_e, 
-                    alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)  
+                      alpha = alpha, g1 = g1, g2 = g2, return_mean = FALSE)  
   loss <- data.frame(ESR=l_esr, HS=l_hs, HAR=l_har, GARCH=l_garch)
   
   # Compute scores
@@ -174,9 +170,9 @@ loss_diff <- lapply(models, function(est) {
   df1 <- out %>% subset(model == est) %>% spread(variable, value)
   df0 <- out %>% subset(model == 'esr') %>% spread(variable, value)
   
-   t(sapply(x, function(v) murpy_diff(r=df0$r, q1=df0$q, e1=df0$e, 
-                                      q2=df1$q, e2=df1$e, alpha=alpha, v=v)))
- })
+  t(sapply(x, function(v) murpy_diff(r=df0$r, q1=df0$q, e1=df0$e, 
+                                     q2=df1$q, e2=df1$e, alpha=alpha, v=v)))
+})
 
 mean_loss_diff <- data.frame(do.call(cbind, lapply(loss_diff, "[",, 1)))
 sd_loss_diff <- data.frame(do.call(cbind, lapply(loss_diff, "[",, 2)))
