@@ -72,6 +72,7 @@ do_predictions <- function(y, x, alpha, symbol, win = 1000) {
     out <- out[!sapply(out, function(x) inherits(x, "simpleError"))]
     out <- do.call('rbind', out)
     saveRDS(out, file)
+    out
   }
 }
 
@@ -135,8 +136,8 @@ for (idx_row in seq_len(nrow(scores))) {
   scores$p_har[idx_row] <- mcs['HAR', 'Pvalue']
 }
 
-# Table -------------------------------------------------------------------
 
+# Table -------------------------------------------------------------------
 
 get_table <- function(g1_, conflevel=0.1) {
   p <- scores %>% subset(g1 == g1_) %>% select(c(p_esr, p_hs, p_garch, p_har)) %>% t()
@@ -155,7 +156,7 @@ get_table <- function(g1_, conflevel=0.1) {
 }
 
 tab <- rbind(get_table(1), get_table(2))
-print(xtable(tab), file = paste0(tbl_folder, 'forecast_comparison_scores', 
+print(xtable(tab), file = paste0(tbl_folder, 'forecast_comparison_scores_', 
                                  sym, '.txt'),
       include.rownames = FALSE, include.colnames = FALSE, 
       sanitize.text.function = function(x) x, booktabs = TRUE,
