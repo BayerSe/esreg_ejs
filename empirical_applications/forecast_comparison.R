@@ -78,7 +78,7 @@ do_predictions <- function(y, x, alpha, symbol, win = 1000) {
 
 # Load data ---------------------------------------------------------------
 
-file <- '~/Downloads/oxfordmanrealizedvolatilityindices.zip'
+file <- 'empirical_applications/data/oxfordmanrealizedvolatilityindices.zip'
 #symbol <- '.SPX'
 symbol <- commandArgs(trailingOnly=TRUE)[1]
 data <- load_data(file, symbol)
