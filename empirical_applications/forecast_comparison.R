@@ -81,6 +81,7 @@ do_predictions <- function(y, x, alpha, symbol, win = 1000) {
 file <- 'empirical_applications/data/oxfordmanrealizedvolatilityindices.zip'
 #symbol <- '.SPX'
 symbol <- commandArgs(trailingOnly=TRUE)[1]
+sym <- gsub('.', '', symbol, fixed = TRUE)
 data <- load_data(file, symbol)
 alpha <- 0.025
 out <- do_predictions(y = data$y, x = data$x, 
@@ -154,7 +155,8 @@ get_table <- function(g1_, conflevel=0.1) {
 }
 
 tab <- rbind(get_table(1), get_table(2))
-print(xtable(tab), file = paste0(tbl_folder, 'forecast_comparison_scores.txt'),
+print(xtable(tab), file = paste0(tbl_folder, 'forecast_comparison_scores', 
+                                 sym, '.txt'),
       include.rownames = FALSE, include.colnames = FALSE, 
       sanitize.text.function = function(x) x, booktabs = TRUE,
       comment = FALSE, only.contents = TRUE, hline.after = c(4,8))
@@ -184,4 +186,5 @@ mean_loss_diff$x <- x
 sd_loss_diff$x <- x
 
 plot_murphy_diagram(loss_mean=mean_loss_diff, loss_sd=sd_loss_diff, cl=0.9, 
-                    file=paste0(img_folder, 'forecast_comparison_murphy.pdf'))
+                    file=paste0(img_folder, 'forecast_comparison_murphy_', 
+                                sym, '.pdf'))
