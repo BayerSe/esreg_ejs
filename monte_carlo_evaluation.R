@@ -164,10 +164,12 @@ frob_norm_true_cov <- concat_results(all_results, 'fnorm_true_cov')
 
 general_info %>% subset(rel_diff_mc < 1) %>% arrange(rel_diff_mc) %>% print(n=40)
 
-design <- 3
-n <- 2000
-plot_mse_decomposed(mse_per_parameter, design=design, sample_size=n,
-                    file=paste0(img_folder, 'mse_decomposed_design_', design, '_n_', n, '.pdf'))
+for (design in c(1, 2, 3, 4)) {
+  for (n in c(250, 500, 1000, 2000, 5000)) {
+    plot_mse_decomposed(mse_per_parameter, design=design, sample_size=n,
+                        file=paste0(img_folder, 'mse_decomposed_design_', design, '_n_', n, '.pdf'))
+  }
+}
 
 plot_mse(mse, file=paste0(img_folder, 'mse.pdf'))
 
